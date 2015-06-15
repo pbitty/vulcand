@@ -27,6 +27,11 @@
 			"Rev": "e444e69cbd2e2e3e0749a2f3c717cec491552bbf"
 		},
 		{
+			"ImportPath": "github.com/hashicorp/consul/api",
+			"Comment": "v0.5.2-105-gc8f76b5",
+			"Rev": "c8f76b5e2cf6bfdc52af1924114e8dff40394821"
+		},
+		{
 			"ImportPath": "github.com/mailgun/go-etcd/etcd",
 			"Comment": "v0.2.0-rc1-124-g248e96a",
 			"Rev": "248e96a4ad7adfa23b531eb2d8e80d9050c33d24"
