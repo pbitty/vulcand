@@ -62,7 +62,7 @@ func (n *ng) GetHosts() ([]engine.Host, error) {
 		return nil, err
 	}
 	for _, kvPair := range kvPairs {
-		host, err := n.makeHost(kvPair)
+		host, err := n.createHost(kvPair)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +81,7 @@ func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return n.makeHost(kvPair)
+	return n.createHost(kvPair)
 }
 
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
@@ -118,7 +118,7 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 
 func (n *ng) toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface{}, err error) {
 	if hostKeyRegexp.MatchString(kvPair.Key) {
-		if host, err := n.makeHost(kvPair); err == nil {
+		if host, err := n.createHost(kvPair); err == nil {
 			if changeType == Upsert {
 				return &engine.HostUpserted{
 					Host: *host,
@@ -137,7 +137,7 @@ func (n *ng) toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface
 	}
 }
 
-func (n *ng) makeHost(kvPair *api.KVPair) (*engine.Host, error) {
+func (n *ng) createHost(kvPair *api.KVPair) (*engine.Host, error) {
 	var sealedHost *sealedHostEntry
 	if err := json.Unmarshal(kvPair.Value, &sealedHost); err != nil {
 		return nil, err
