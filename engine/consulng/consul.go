@@ -55,6 +55,22 @@ func (n *ng) UpsertHost(h engine.Host) error {
 	return n.putJSON(n.path("hosts", h.Name, "host"), sealedHost)
 }
 
+func (n *ng) GetHosts() ([]engine.Host, error) {
+	hosts := []engine.Host{}
+	kvPairs, _, err := n.client.KV().List(n.path("hosts"), nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, kvPair := range kvPairs {
+		host, err := n.makeHost(kvPair)
+		if err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, *host)
+	}
+	return hosts, nil
+}
+
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 	// TODO implement cancel functionality
 	waitIndex := uint64(1)
@@ -247,9 +263,6 @@ func (n *ng) unsealKeyPair(sealedKeyPair []byte) (*engine.KeyPair, error) {
 //
 // Not yet implemented ...
 //
-func (n *ng) GetHosts() ([]engine.Host, error) {
-	return nil, errors.New("Not yet implemented")
-}
 
 func (n *ng) GetHost(engine.HostKey) (*engine.Host, error) {
 	return nil, errors.New("Not yet implemented")
