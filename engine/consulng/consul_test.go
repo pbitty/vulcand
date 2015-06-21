@@ -4,6 +4,7 @@ import (
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/mailgun/log"
 	"github.com/mailgun/vulcand/engine/test"
+	"github.com/mailgun/vulcand/secret"
 	"os"
 	"testing"
 
@@ -18,6 +19,7 @@ type ConsulSuite struct {
 	consulHost   string
 	consulPrefix string
 	stopC        chan bool
+	key          string
 }
 
 var _ = Suite(&ConsulSuite{
@@ -39,10 +41,22 @@ func (s *ConsulSuite) SetUpSuite(c *C) {
 		return
 	}
 	s.consulHost = consulHost
+
+	key, err := secret.NewKeyString()
+	if err != nil {
+		panic(err)
+	}
+	s.key = key
 }
 
 func (s *ConsulSuite) SetUpTest(c *C) {
-	engine, err := New(s.consulHost, s.consulPrefix)
+	key, err := secret.KeyFromString(s.key)
+	c.Assert(err, IsNil)
+
+	box, err := secret.NewBox(key)
+	c.Assert(err, IsNil)
+
+	engine, err := New(s.consulHost, s.consulPrefix, box)
 	c.Assert(err, IsNil)
 
 	if _, err := s.consulClient.KV().DeleteTree(s.consulPrefix, nil); err != nil {

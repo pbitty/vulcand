@@ -44,4 +44,20 @@ func SealKeyPairToJSON(box *Box, keyPair *engine.KeyPair) ([]byte, error) {
 	return SealedValueToJSON(sealed)
 }
 
+func UnsealKeyPairFromJSON(box *Box, sealedKeyPair []byte) (*engine.KeyPair, error) {
+	var unsealedKeyPair *engine.KeyPair
+	sealed, err := SealedValueFromJSON(sealedKeyPair)
+	if err != nil {
+		return nil, err
+	}
+	unsealed, err := box.Open(sealed)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(unsealed, &unsealedKeyPair); err != nil {
+		return nil, err
+	}
+	return unsealedKeyPair, nil
+}
+
 const encryptionSecretBox = "secretbox.v1"

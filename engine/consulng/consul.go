@@ -7,6 +7,7 @@ import (
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/engine"
 	"github.com/mailgun/vulcand/plugin"
+	"github.com/mailgun/vulcand/secret"
 	"regexp"
 	"strings"
 	"time"
@@ -26,75 +27,62 @@ const (
 type ng struct {
 	client     *api.Client
 	prefix     string
+	box        *secret.Box
 	localState map[string]*api.KVPair
 }
 
-func New(hostAddress string, prefix string) (engine.Engine, error) {
-	client, err := api.NewClient(&api.Config{
-		Address: hostAddress,
-	})
-	if err != nil {
+func New(hostAddress string, prefix string, box *secret.Box) (engine.Engine, error) {
+	if client, err := api.NewClient(&api.Config{Address: hostAddress}); err == nil {
+		return &ng{
+			client:     client,
+			prefix:     prefix,
+			box:        box,
+			localState: map[string]*api.KVPair{},
+		}, nil
+	} else {
 		return nil, err
 	}
-
-	return &ng{
-		client:     client,
-		prefix:     prefix,
-		localState: map[string]*api.KVPair{},
-	}, nil
 }
 
 func (n *ng) UpsertHost(h engine.Host) error {
-	fmt.Println("Upserting")
 	if h.Name == "" {
 		return &engine.InvalidFormatError{Message: "hostname cannot be empty"}
 	}
-
-	key := n.path("hosts", h.Name, "host")
-	value := h
-
-	// TODO Implement sealing TLS keys
-
-	return n.putJSON(key, value)
+	sealedHost, err := n.sealHost(&h)
+	if err != nil {
+		return err
+	}
+	return n.putJSON(n.path("hosts", h.Name, "host"), sealedHost)
 }
 
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
-	fmt.Println("Subscribing")
 	// TODO implement cancel functionality
 	waitIndex := uint64(1)
 	for {
 		// wait for changes
-		pairs, queryMeta, err := n.client.KV().List(n.prefix, &api.QueryOptions{
-			WaitIndex: waitIndex,
-		})
-		fmt.Println("Got changes")
+		pairs, queryMeta, err := n.client.KV().List(n.prefix, &api.QueryOptions{WaitIndex: waitIndex})
 		if err != nil {
-			fmt.Println("Change errors")
 			return err
 		}
-		fmt.Println("Changes: %s", pairs)
 		waitIndex = queryMeta.LastIndex
 
 		remoteState := mapByKey(pairs)
 		upserts := n.syncUpserts(remoteState)
-		fmt.Println("Upserts: %v (%s)", upserts, len(upserts))
 		for _, upsertPair := range upserts {
-			fmt.Println("upsertPair: %#v", upsertPair)
-			// _ = "breakpoint"
-			if event, err := toEvent(upsertPair, Upsert); err == nil {
-				events <- event
-			} else {
+			event, err := toEvent(upsertPair, Upsert)
+			if err != nil {
 				return err
 			}
+			events <- event
 		}
 
 		deletes := n.syncDeletes(remoteState)
 		for _, deletePair := range deletes {
-			if event, err := toEvent(deletePair, Delete); err == nil {
-				events <- event
-			} else {
+			event, err := toEvent(deletePair, Delete)
+			if err != nil {
 				return err
 			}
+			events <- event
 		}
 	}
 }
@@ -174,18 +162,79 @@ func (n *ng) path(keys ...string) string {
 }
 
 //
-// Copy-pasted stuff from etcdng
+// Repeated logic from etcdng
 // TODO refactor
 //
-type hostEntry struct {
+type sealedHostEntry struct {
 	Name     string
-	Settings hostSettings
+	Settings sealedHostSettings
 }
 
-type hostSettings struct {
-	Default bool
-	KeyPair []byte
-	OCSP    engine.OCSPSettings
+type sealedHostSettings struct {
+	Default       bool
+	SealedKeyPair []byte
+	OCSP          engine.OCSPSettings
+}
+
+func (n *ng) sealHost(host *engine.Host) (*sealedHostEntry, error) {
+	keyPair, err := n.sealKeyPair(host.Settings.KeyPair)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sealedHostEntry{
+		Name: host.Name,
+		Settings: sealedHostSettings{
+			Default:       host.Settings.Default,
+			SealedKeyPair: keyPair,
+			OCSP:          host.Settings.OCSP,
+		},
+	}, nil
+}
+
+func (n *ng) unsealHost(host *sealedHostEntry) (*engine.Host, error) {
+	keyPair, err := n.unsealKeyPair(host.Settings.SealedKeyPair)
+	if err != nil {
+		return nil, err
+	}
+
+	return &engine.Host{
+		Name: host.Name,
+		Settings: engine.HostSettings{
+			Default: host.Settings.Default,
+			KeyPair: keyPair,
+			OCSP:    host.Settings.OCSP,
+		},
+	}, nil
+}
+
+func (n *ng) sealKeyPair(unsealedKeyPair *engine.KeyPair) ([]byte, error) {
+	if unsealedKeyPair != nil {
+		if n.box == nil {
+			return nil, fmt.Errorf("this backend does not support encryption")
+		}
+
+		sealedKeyPair, err := secret.SealKeyPairToJSON(n.box, unsealedKeyPair)
+		if err != nil {
+			return nil, err
+		}
+		return sealedKeyPair, nil
+	}
+	return nil, nil
+}
+
+func (n *ng) unsealKeyPair(sealedKeyPair []byte) (*engine.KeyPair, error) {
+	if sealedKeyPair != nil {
+		if n.box == nil {
+			return nil, fmt.Errorf("need secretbox to open sealed data")
+		}
+		unsealedKeyPair, err := secret.UnsealKeyPairFromJSON(n.box, sealedKeyPair)
+		if err != nil {
+			return nil, err
+		}
+		return unsealedKeyPair, nil
+	}
+	return nil, nil
 }
 
 //
