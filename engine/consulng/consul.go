@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/engine"
+	"github.com/mailgun/vulcand/engine/seal"
 	"github.com/mailgun/vulcand/plugin"
 	"github.com/mailgun/vulcand/secret"
 	"regexp"
@@ -48,7 +49,7 @@ func (n *ng) UpsertHost(h engine.Host) error {
 	if h.Name == "" {
 		return &engine.InvalidFormatError{Message: "hostname cannot be empty"}
 	}
-	sealedHost, err := n.sealHost(&h)
+	sealedHost, err := seal.SealHost(n.box, &h)
 	if err != nil {
 		return err
 	}
@@ -77,11 +78,11 @@ func (n *ng) DeleteHost(h engine.HostKey) error {
 }
 
 func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
-	kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil)
-	if err != nil {
+	if kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil); err == nil {
+		return n.createHost(kvPair)
+	} else {
 		return nil, err
 	}
-	return n.createHost(kvPair)
 }
 
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
@@ -138,11 +139,11 @@ func (n *ng) toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface
 }
 
 func (n *ng) createHost(kvPair *api.KVPair) (*engine.Host, error) {
-	var sealedHost *sealedHostEntry
+	var sealedHost *seal.SealedHostEntry
 	if err := json.Unmarshal(kvPair.Value, &sealedHost); err != nil {
 		return nil, err
 	}
-	return n.unsealHost(sealedHost)
+	return seal.UnsealHost(n.box, sealedHost)
 }
 
 func (n *ng) syncUpserts(remoteState map[string]*api.KVPair) []*api.KVPair {
@@ -195,82 +196,6 @@ func (n *ng) putJSON(key string, value interface{}) error {
 
 func (n *ng) path(keys ...string) string {
 	return strings.Join(append([]string{n.prefix}, keys...), "/")
-}
-
-//
-// Repeated logic from etcdng
-// TODO refactor
-//
-type sealedHostEntry struct {
-	Name     string
-	Settings sealedHostSettings
-}
-
-type sealedHostSettings struct {
-	Default       bool
-	SealedKeyPair []byte
-	OCSP          engine.OCSPSettings
-}
-
-func (n *ng) sealHost(host *engine.Host) (*sealedHostEntry, error) {
-	keyPair, err := n.sealKeyPair(host.Settings.KeyPair)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sealedHostEntry{
-		Name: host.Name,
-		Settings: sealedHostSettings{
-			Default:       host.Settings.Default,
-			SealedKeyPair: keyPair,
-			OCSP:          host.Settings.OCSP,
-		},
-	}, nil
-}
-
-func (n *ng) unsealHost(host *sealedHostEntry) (*engine.Host, error) {
-	keyPair, err := n.unsealKeyPair(host.Settings.SealedKeyPair)
-	if err != nil {
-		return nil, err
-	}
-
-	return &engine.Host{
-		Name: host.Name,
-		Settings: engine.HostSettings{
-			Default: host.Settings.Default,
-			KeyPair: keyPair,
-			OCSP:    host.Settings.OCSP,
-		},
-	}, nil
-}
-
-func (n *ng) sealKeyPair(unsealedKeyPair *engine.KeyPair) ([]byte, error) {
-	if unsealedKeyPair != nil {
-		if n.box == nil {
-			return nil, fmt.Errorf("this backend does not support encryption")
-		}
-
-		sealedKeyPair, err := secret.SealKeyPairToJSON(n.box, unsealedKeyPair)
-		if err != nil {
-			return nil, err
-		}
-		return sealedKeyPair, nil
-	}
-	return nil, nil
-}
-
-func (n *ng) unsealKeyPair(sealedKeyPair []byte) (*engine.KeyPair, error) {
-	if sealedKeyPair != nil {
-		if n.box == nil {
-			return nil, fmt.Errorf("need secretbox to open sealed data")
-		}
-		unsealedKeyPair, err := secret.UnsealKeyPairFromJSON(n.box, sealedKeyPair)
-		if err != nil {
-			return nil, err
-		}
-		return unsealedKeyPair, nil
-	}
-	return nil, nil
 }
 
 //
