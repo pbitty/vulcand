@@ -76,6 +76,14 @@ func (n *ng) DeleteHost(h engine.HostKey) error {
 	return err
 }
 
+func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
+	kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil)
+	if err != nil {
+		return nil, err
+	}
+	return n.makeHost(kvPair)
+}
+
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 	// TODO implement cancel functionality
 	waitIndex := uint64(1)
@@ -268,10 +276,6 @@ func (n *ng) unsealKeyPair(sealedKeyPair []byte) (*engine.KeyPair, error) {
 //
 // Not yet implemented ...
 //
-
-func (n *ng) GetHost(engine.HostKey) (*engine.Host, error) {
-	return nil, errors.New("Not yet implemented")
-}
 
 func (n *ng) GetListeners() ([]engine.Listener, error) {
 	return nil, errors.New("Not yet implemented")
