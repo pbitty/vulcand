@@ -69,7 +69,7 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 		remoteState := mapByKey(pairs)
 		upserts := n.syncUpserts(remoteState)
 		for _, upsertPair := range upserts {
-			event, err := toEvent(upsertPair, Upsert)
+			event, err := n.toEvent(upsertPair, Upsert)
 			if err != nil {
 				return err
 			}
@@ -78,7 +78,7 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 
 		deletes := n.syncDeletes(remoteState)
 		for _, deletePair := range deletes {
-			event, err := toEvent(deletePair, Delete)
+			event, err := n.toEvent(deletePair, Delete)
 			if err != nil {
 				return err
 			}
@@ -87,10 +87,9 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 	}
 }
 
-func toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface{}, err error) {
+func (n *ng) toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface{}, err error) {
 	if hostKeyRegexp.MatchString(kvPair.Key) {
-		host := &engine.Host{}
-		if err := json.Unmarshal(kvPair.Value, host); err == nil {
+		if host, err := n.makeHost(kvPair); err == nil {
 			if changeType == Upsert {
 				return &engine.HostUpserted{
 					Host: *host,
@@ -107,6 +106,14 @@ func toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface{}, err 
 	} else {
 		return nil, fmt.Errorf("Unrecognized key: %s [kvPair: %s]", kvPair.Key, kvPair)
 	}
+}
+
+func (n *ng) makeHost(kvPair *api.KVPair) (*engine.Host, error) {
+	var sealedHost *sealedHostEntry
+	if err := json.Unmarshal(kvPair.Value, &sealedHost); err != nil {
+		return nil, err
+	}
+	return n.unsealHost(sealedHost)
 }
 
 func (n *ng) syncUpserts(remoteState map[string]*api.KVPair) []*api.KVPair {
