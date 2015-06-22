@@ -3,19 +3,13 @@ package consulng
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/engine"
 	"github.com/mailgun/vulcand/engine/seal"
 	"github.com/mailgun/vulcand/plugin"
 	"github.com/mailgun/vulcand/secret"
-	"regexp"
 	"strings"
 	"time"
-)
-
-var (
-	hostKeyRegexp = regexp.MustCompile(".*/hosts/[^/]+/host")
 )
 
 type ChangeType int
@@ -99,7 +93,7 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 		remoteState := mapByKey(pairs)
 		upserts := n.syncUpserts(remoteState)
 		for _, upsertPair := range upserts {
-			event, err := n.toEvent(upsertPair, Upsert)
+			event, err := n.createEvent(upsertPair, Upsert)
 			if err != nil {
 				return err
 			}
@@ -108,33 +102,12 @@ func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
 
 		deletes := n.syncDeletes(remoteState)
 		for _, deletePair := range deletes {
-			event, err := n.toEvent(deletePair, Delete)
+			event, err := n.createEvent(deletePair, Delete)
 			if err != nil {
 				return err
 			}
 			events <- event
 		}
-	}
-}
-
-func (n *ng) toEvent(kvPair *api.KVPair, changeType ChangeType) (event interface{}, err error) {
-	if hostKeyRegexp.MatchString(kvPair.Key) {
-		if host, err := n.createHost(kvPair); err == nil {
-			if changeType == Upsert {
-				return &engine.HostUpserted{
-					Host: *host,
-				}, nil
-			} else {
-				return &engine.HostDeleted{
-					HostKey: engine.HostKey{host.Name},
-				}, nil
-			}
-
-		} else {
-			return nil, err
-		}
-	} else {
-		return nil, fmt.Errorf("Unrecognized key: %s [kvPair: %s]", kvPair.Key, kvPair)
 	}
 }
 
