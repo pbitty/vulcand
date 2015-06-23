@@ -27,16 +27,16 @@ type ng struct {
 }
 
 func New(hostAddress string, prefix string, box *secret.Box) (engine.Engine, error) {
-	if client, err := api.NewClient(&api.Config{Address: hostAddress}); err == nil {
-		return &ng{
-			client:     client,
-			prefix:     prefix,
-			box:        box,
-			localState: map[string]*api.KVPair{},
-		}, nil
-	} else {
+	client, err := api.NewClient(&api.Config{Address: hostAddress})
+	if err != nil {
 		return nil, err
 	}
+	return &ng{
+		client:     client,
+		prefix:     prefix,
+		box:        box,
+		localState: map[string]*api.KVPair{},
+	}, nil
 }
 
 func (n *ng) UpsertHost(h engine.Host) error {
@@ -72,11 +72,11 @@ func (n *ng) DeleteHost(h engine.HostKey) error {
 }
 
 func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
-	if kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil); err == nil {
-		return n.createHost(kvPair)
-	} else {
+	kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil)
+	if err != nil {
 		return nil, err
 	}
+	return n.createHost(kvPair)
 }
 
 func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
