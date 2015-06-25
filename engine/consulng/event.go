@@ -8,12 +8,14 @@ import (
 )
 
 var (
-	hostRegexp = regexp.MustCompile(".*/hosts/[^/]+/host")
+	hostRegexp     = regexp.MustCompile(".*/hosts/[^/]+?")
+	listenerRegexp = regexp.MustCompile(".*/listeners/[^/]+?")
 )
 
 func (n *ng) createEvent(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
 	parsers := []ChangeParser{
 		n.parseHostChange,
+		n.parseListenerChange,
 	}
 
 	for _, parser := range parsers {
@@ -34,17 +36,35 @@ func (n *ng) parseHostChange(kvPair *api.KVPair, changeType ChangeType) (interfa
 			return nil, err
 		}
 
-		var event interface{}
 		if changeType == Upsert {
-			event = &engine.HostUpserted{
+			return &engine.HostUpserted{
 				Host: *host,
-			}
+			}, nil
 		} else {
-			event = &engine.HostDeleted{
+			return &engine.HostDeleted{
 				HostKey: engine.HostKey{host.Name},
-			}
+			}, nil
 		}
-		return event, nil
+	}
+	return nil, nil
+}
+
+func (n *ng) parseListenerChange(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
+	if listenerRegexp.MatchString(kvPair.Key) {
+		listener, err := n.createListener(kvPair)
+		if err != nil {
+			return nil, err
+		}
+
+		if changeType == Upsert {
+			return &engine.ListenerUpserted{
+				Listener: *listener,
+			}, nil
+		} else {
+			return &engine.ListenerDeleted{
+				ListenerKey: engine.ListenerKey{Id: listener.Id},
+			}, nil
+		}
 	}
 	return nil, nil
 }

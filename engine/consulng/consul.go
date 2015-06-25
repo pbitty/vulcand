@@ -80,117 +80,45 @@ func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
 	return n.createHost(kvPair)
 }
 
-func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
-	// TODO implement cancel functionality
-	waitIndex := uint64(1)
-	for {
-		// wait for changes
-		pairs, queryMeta, err := n.client.KV().List(n.prefix, &api.QueryOptions{WaitIndex: waitIndex})
-		if err != nil {
-			return err
-		}
-		waitIndex = queryMeta.LastIndex
-
-		remoteState := mapByKey(pairs)
-		upserts := n.syncUpserts(remoteState)
-		for _, upsertPair := range upserts {
-			event, err := n.createEvent(upsertPair, Upsert)
-			if err != nil {
-				return err
-			}
-			events <- event
-		}
-
-		deletes := n.syncDeletes(remoteState)
-		for _, deletePair := range deletes {
-			event, err := n.createEvent(deletePair, Delete)
-			if err != nil {
-				return err
-			}
-			events <- event
-		}
+func (n *ng) UpsertListener(l engine.Listener) error {
+	if l.Id == "" {
+		return &engine.InvalidFormatError{Message: "listener id can not be empty"}
 	}
+	return n.putJSON(n.listenerPath(l), l)
 }
 
-func (n *ng) createHost(kvPair *api.KVPair) (*engine.Host, error) {
-	var sealedHost *seal.SealedHostEntry
-	if err := json.Unmarshal(kvPair.Value, &sealedHost); err != nil {
+func (n *ng) GetListeners() ([]engine.Listener, error) {
+	listeners := []engine.Listener{}
+	kvPairs, _, err := n.client.KV().List(n.listenersPath(), nil)
+	if err != nil {
 		return nil, err
 	}
-	return seal.UnsealHost(n.box, sealedHost)
-}
-
-func (n *ng) syncUpserts(remoteState map[string]*api.KVPair) []*api.KVPair {
-	upserts := []*api.KVPair{}
-	for key, remotePair := range remoteState {
-		localPair, exists := n.localState[key]
-		if !exists || string(remotePair.Value) != string(localPair.Value) {
-			n.localState[key] = remotePair
-			upserts = append(upserts, remotePair)
+	for _, kvPair := range kvPairs {
+		listener, err := n.createListener(kvPair)
+		if err != nil {
+			return nil, err
 		}
+		listeners = append(listeners, *listener)
 	}
-	return upserts
+	return listeners, nil
 }
 
-func (n *ng) syncDeletes(remoteState map[string]*api.KVPair) []*api.KVPair {
-	deletes := []*api.KVPair{}
-	for key, localPair := range n.localState {
-		if _, exists := remoteState[key]; !exists {
-			delete(n.localState, key)
-			deletes = append(deletes, localPair)
-		}
-	}
-	return deletes
-}
-
-func mapByKey(pairs []*api.KVPair) map[string]*api.KVPair {
-	pairsByKey := map[string]*api.KVPair{}
-	for _, pair := range pairs {
-		pairsByKey[pair.Key] = pair
-	}
-	return pairsByKey
-}
-
-func (n *ng) putJSON(key string, value interface{}) error {
-	bytes, err := json.Marshal(value)
+func (n *ng) GetListener(l engine.ListenerKey) (*engine.Listener, error) {
+	kvPair, _, err := n.client.KV().Get(n.listenerKeyPath(l), nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	kvPair := &api.KVPair{
-		Key:   key,
-		Value: bytes,
-	}
-	_, err = n.client.KV().Put(kvPair, nil)
-	if err != nil {
-		return err
-	}
-	return nil
+	return n.createListener(kvPair)
 }
 
-func (n *ng) path(keys ...string) string {
-	return strings.Join(append([]string{n.prefix}, keys...), "/")
+func (n *ng) DeleteListener(l engine.ListenerKey) error {
+	_, err := n.client.KV().Delete(n.listenerKeyPath(l), nil)
+	return err
 }
 
 //
 // Not yet implemented ...
 //
-
-func (n *ng) GetListeners() ([]engine.Listener, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) GetListener(engine.ListenerKey) (*engine.Listener, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) UpsertListener(engine.Listener) error {
-	return errors.New("Not yet implemented")
-}
-
-func (n *ng) DeleteListener(engine.ListenerKey) error {
-	return errors.New("Not yet implemented")
-}
 
 func (n *ng) GetFrontends() ([]engine.Frontend, error) {
 	return nil, errors.New("Not yet implemented")
@@ -261,4 +189,105 @@ func (n *ng) GetRegistry() *plugin.Registry {
 }
 
 func (n *ng) Close() {
+	panic("Not yet implemented")
+}
+
+func (n *ng) Subscribe(events chan interface{}, cancel chan bool) error {
+	// TODO implement cancel functionality
+	waitIndex := uint64(1)
+	for {
+		// wait for changes
+		pairs, queryMeta, err := n.client.KV().List(n.prefix, &api.QueryOptions{WaitIndex: waitIndex})
+		if err != nil {
+			return err
+		}
+		waitIndex = queryMeta.LastIndex
+
+		remoteState := mapByKey(pairs)
+		upserts := n.syncUpserts(remoteState)
+		for _, upsertPair := range upserts {
+			event, err := n.createEvent(upsertPair, Upsert)
+			if err != nil {
+				return err
+			}
+			events <- event
+		}
+
+		deletes := n.syncDeletes(remoteState)
+		for _, deletePair := range deletes {
+			event, err := n.createEvent(deletePair, Delete)
+			if err != nil {
+				return err
+			}
+			events <- event
+		}
+	}
+}
+
+func (n *ng) createHost(kvPair *api.KVPair) (*engine.Host, error) {
+	var sealedHost *seal.SealedHostEntry
+	if err := json.Unmarshal(kvPair.Value, &sealedHost); err != nil {
+		return nil, err
+	}
+	return seal.UnsealHost(n.box, sealedHost)
+}
+
+func (n *ng) createListener(kvPair *api.KVPair) (*engine.Listener, error) {
+	var listener *engine.Listener
+	if err := json.Unmarshal(kvPair.Value, &listener); err != nil {
+		return nil, err
+	}
+	return listener, nil
+}
+
+func (n *ng) syncUpserts(remoteState map[string]*api.KVPair) []*api.KVPair {
+	upserts := []*api.KVPair{}
+	for key, remotePair := range remoteState {
+		localPair, exists := n.localState[key]
+		if !exists || string(remotePair.Value) != string(localPair.Value) {
+			n.localState[key] = remotePair
+			upserts = append(upserts, remotePair)
+		}
+	}
+	return upserts
+}
+
+func (n *ng) syncDeletes(remoteState map[string]*api.KVPair) []*api.KVPair {
+	deletes := []*api.KVPair{}
+	for key, localPair := range n.localState {
+		if _, exists := remoteState[key]; !exists {
+			delete(n.localState, key)
+			deletes = append(deletes, localPair)
+		}
+	}
+	return deletes
+}
+
+func mapByKey(pairs []*api.KVPair) map[string]*api.KVPair {
+	pairsByKey := map[string]*api.KVPair{}
+	for _, pair := range pairs {
+		pairsByKey[pair.Key] = pair
+	}
+	return pairsByKey
+}
+
+func (n *ng) putJSON(key string, value interface{}) error {
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	kvPair := &api.KVPair{
+		Key:   key,
+		Value: bytes,
+	}
+	_, err = n.client.KV().Put(kvPair, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *ng) path(keys ...string) string {
+	return strings.Join(append([]string{n.prefix}, keys...), "/")
 }
