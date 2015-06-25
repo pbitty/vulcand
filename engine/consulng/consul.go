@@ -116,6 +116,42 @@ func (n *ng) DeleteListener(l engine.ListenerKey) error {
 	return err
 }
 
+func (n *ng) UpsertBackend(b engine.Backend) error {
+	if b.Id == "" {
+		return &engine.InvalidFormatError{Message: "backend id can not be empty"}
+	}
+	return n.putJSON(n.backendPath(b), b)
+}
+
+func (n *ng) GetBackends() ([]engine.Backend, error) {
+	backends := []engine.Backend{}
+	kvPairs, _, err := n.client.KV().List(n.backendsPath(), nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, kvPair := range kvPairs {
+		backend, err := engine.BackendFromJSON(kvPair.Value)
+		if err != nil {
+			return nil, err
+		}
+		backends = append(backends, *backend)
+	}
+	return backends, nil
+}
+
+func (n *ng) GetBackend(b engine.BackendKey) (*engine.Backend, error) {
+	kvPair, _, err := n.client.KV().Get(n.backendKeyPath(b), nil)
+	if err != nil {
+		return nil, err
+	}
+	return engine.BackendFromJSON(kvPair.Value)
+}
+
+func (n *ng) DeleteBackend(b engine.BackendKey) error {
+	_, err := n.client.KV().Delete(n.backendKeyPath(b), nil)
+	return err
+}
+
 //
 // Not yet implemented ...
 //
@@ -149,22 +185,6 @@ func (n *ng) UpsertMiddleware(engine.FrontendKey, engine.Middleware, time.Durati
 }
 
 func (n *ng) DeleteMiddleware(engine.MiddlewareKey) error {
-	return errors.New("Not yet implemented")
-}
-
-func (n *ng) GetBackends() ([]engine.Backend, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) GetBackend(engine.BackendKey) (*engine.Backend, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) UpsertBackend(engine.Backend) error {
-	return errors.New("Not yet implemented")
-}
-
-func (n *ng) DeleteBackend(engine.BackendKey) error {
 	return errors.New("Not yet implemented")
 }
 

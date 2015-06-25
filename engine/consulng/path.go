@@ -27,3 +27,15 @@ func (n *ng) listenerPath(l engine.Listener) string {
 func (n *ng) listenersPath() string {
 	return n.path("listeners")
 }
+
+func (n *ng) backendPath(b engine.Backend) string {
+	return n.path("backends", b.Id, "backend")
+}
+
+func (n *ng) backendKeyPath(b engine.BackendKey) string {
+	return n.path("backends", b.Id, "backend")
+}
+
+func (n *ng) backendsPath() string {
+	return n.path("backends")
+}

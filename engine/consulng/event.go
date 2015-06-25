@@ -8,14 +8,16 @@ import (
 )
 
 var (
-	hostRegexp     = regexp.MustCompile(".*/hosts/[^/]+?")
-	listenerRegexp = regexp.MustCompile(".*/listeners/[^/]+?")
+	hostRegexp     = regexp.MustCompile(".*/hosts/[^/]+$")
+	listenerRegexp = regexp.MustCompile(".*/listeners/[^/]+$")
+	backendRegexp  = regexp.MustCompile(".*/backends/[^/]+/backend$")
 )
 
 func (n *ng) createEvent(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
 	parsers := []ChangeParser{
 		n.parseHostChange,
 		n.parseListenerChange,
+		n.parseBackendChange,
 	}
 
 	for _, parser := range parsers {
@@ -63,6 +65,26 @@ func (n *ng) parseListenerChange(kvPair *api.KVPair, changeType ChangeType) (int
 		} else {
 			return &engine.ListenerDeleted{
 				ListenerKey: engine.ListenerKey{Id: listener.Id},
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (n *ng) parseBackendChange(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
+	if backendRegexp.MatchString(kvPair.Key) {
+		backend, err := engine.BackendFromJSON(kvPair.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		if changeType == Upsert {
+			return &engine.BackendUpserted{
+				Backend: *backend,
+			}, nil
+		} else {
+			return &engine.BackendDeleted{
+				BackendKey: engine.BackendKey{Id: backend.Id},
 			}, nil
 		}
 	}
