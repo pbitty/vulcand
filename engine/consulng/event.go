@@ -53,7 +53,7 @@ func (n *ng) parseHostChange(kvPair *api.KVPair, changeType ChangeType) (interfa
 
 func (n *ng) parseListenerChange(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
 	if listenerRegexp.MatchString(kvPair.Key) {
-		listener, err := n.createListener(kvPair)
+		listener, err := engine.ListenerFromJSON(kvPair.Value)
 		if err != nil {
 			return nil, err
 		}

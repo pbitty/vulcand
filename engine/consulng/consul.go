@@ -94,7 +94,7 @@ func (n *ng) GetListeners() ([]engine.Listener, error) {
 		return nil, err
 	}
 	for _, kvPair := range kvPairs {
-		listener, err := n.createListener(kvPair)
+		listener, err := engine.ListenerFromJSON(kvPair.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (n *ng) GetListener(l engine.ListenerKey) (*engine.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	return n.createListener(kvPair)
+	return engine.ListenerFromJSON(kvPair.Value)
 }
 
 func (n *ng) DeleteListener(l engine.ListenerKey) error {
@@ -250,14 +250,6 @@ func (n *ng) createHost(kvPair *api.KVPair) (*engine.Host, error) {
 		return nil, err
 	}
 	return seal.UnsealHost(n.box, sealedHost)
-}
-
-func (n *ng) createListener(kvPair *api.KVPair) (*engine.Listener, error) {
-	var listener *engine.Listener
-	if err := json.Unmarshal(kvPair.Value, &listener); err != nil {
-		return nil, err
-	}
-	return listener, nil
 }
 
 func (n *ng) syncUpserts(remoteState map[string]*api.KVPair) []*api.KVPair {
