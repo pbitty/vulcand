@@ -4,6 +4,7 @@ import (
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/mailgun/log"
 	"github.com/mailgun/vulcand/engine/test"
+	"github.com/mailgun/vulcand/plugin/registry"
 	"github.com/mailgun/vulcand/secret"
 	"os"
 	"testing"
@@ -56,7 +57,7 @@ func (s *ConsulSuite) SetUpTest(c *C) {
 	box, err := secret.NewBox(key)
 	c.Assert(err, IsNil)
 
-	engine, err := New(s.consulHost, s.consulPrefix, box)
+	engine, err := New(s.consulHost, s.consulPrefix, box, registry.GetRegistry())
 	c.Assert(err, IsNil)
 
 	if _, err := s.consulClient.KV().DeleteTree(s.consulPrefix, nil); err != nil {

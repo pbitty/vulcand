@@ -24,9 +24,10 @@ type ng struct {
 	prefix     string
 	box        *secret.Box
 	localState map[string]*api.KVPair
+	registry   *plugin.Registry
 }
 
-func New(hostAddress string, prefix string, box *secret.Box) (engine.Engine, error) {
+func New(hostAddress string, prefix string, box *secret.Box, registry *plugin.Registry) (engine.Engine, error) {
 	client, err := api.NewClient(&api.Config{Address: hostAddress})
 	if err != nil {
 		return nil, err
@@ -36,6 +37,7 @@ func New(hostAddress string, prefix string, box *secret.Box) (engine.Engine, err
 		prefix:     prefix,
 		box:        box,
 		localState: map[string]*api.KVPair{},
+		registry:   registry,
 	}, nil
 }
 
@@ -152,6 +154,10 @@ func (n *ng) DeleteBackend(b engine.BackendKey) error {
 	return err
 }
 
+func (n *ng) GetRegistry() *plugin.Registry {
+	return n.registry
+}
+
 //
 // Not yet implemented ...
 //
@@ -202,10 +208,6 @@ func (n *ng) UpsertServer(engine.BackendKey, engine.Server, time.Duration) error
 
 func (n *ng) DeleteServer(engine.ServerKey) error {
 	return errors.New("Not yet implemented")
-}
-
-func (n *ng) GetRegistry() *plugin.Registry {
-	panic("Not yet implemented")
 }
 
 func (n *ng) Close() {
