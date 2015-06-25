@@ -47,15 +47,16 @@ func (n *ng) UpsertHost(h engine.Host) error {
 	if err != nil {
 		return err
 	}
-	return n.putJSON(n.path("hosts", h.Name, "host"), sealedHost)
+	return n.putJSON(n.hostPath(h), sealedHost)
 }
 
 func (n *ng) GetHosts() ([]engine.Host, error) {
 	hosts := []engine.Host{}
-	kvPairs, _, err := n.client.KV().List(n.path("hosts"), nil)
+	kvPairs, _, err := n.client.KV().List(n.hostsPath(), nil)
 	if err != nil {
 		return nil, err
 	}
+
 	for _, kvPair := range kvPairs {
 		host, err := n.createHost(kvPair)
 		if err != nil {
@@ -67,12 +68,12 @@ func (n *ng) GetHosts() ([]engine.Host, error) {
 }
 
 func (n *ng) DeleteHost(h engine.HostKey) error {
-	_, err := n.client.KV().Delete(n.path("hosts", h.Name, "host"), nil)
+	_, err := n.client.KV().Delete(n.hostKeyPath(h), nil)
 	return err
 }
 
 func (n *ng) GetHost(h engine.HostKey) (*engine.Host, error) {
-	kvPair, _, err := n.client.KV().Get(n.path("hosts", h.Name, "host"), nil)
+	kvPair, _, err := n.client.KV().Get(n.hostKeyPath(h), nil)
 	if err != nil {
 		return nil, err
 	}
