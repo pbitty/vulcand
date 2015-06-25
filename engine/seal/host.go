@@ -67,12 +67,10 @@ func UnsealHost(box *secret.Box, host *SealedHostEntry) (*engine.Host, error) {
 		unsealedKeyPair = nil
 	}
 
-	return &engine.Host{
-		Name: host.Name,
-		Settings: engine.HostSettings{
+	return engine.NewHost(host.Name,
+		engine.HostSettings{
 			Default: host.Settings.Default,
 			KeyPair: unsealedKeyPair,
 			OCSP:    host.Settings.OCSP,
-		},
-	}, nil
+		})
 }
