@@ -11,6 +11,7 @@ var (
 	hostRegexp     = regexp.MustCompile(".*/hosts/[^/]+$")
 	listenerRegexp = regexp.MustCompile(".*/listeners/[^/]+$")
 	backendRegexp  = regexp.MustCompile(".*/backends/[^/]+/backend$")
+	frontendRegexp = regexp.MustCompile(".*/frontends/[^/]+/frontend")
 )
 
 func (n *ng) createEvent(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
@@ -18,6 +19,7 @@ func (n *ng) createEvent(kvPair *api.KVPair, changeType ChangeType) (interface{}
 		n.parseHostChange,
 		n.parseListenerChange,
 		n.parseBackendChange,
+		n.parseFrontendChange,
 	}
 
 	for _, parser := range parsers {
@@ -85,6 +87,26 @@ func (n *ng) parseBackendChange(kvPair *api.KVPair, changeType ChangeType) (inte
 		} else {
 			return &engine.BackendDeleted{
 				BackendKey: engine.BackendKey{Id: backend.Id},
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (n *ng) parseFrontendChange(kvPair *api.KVPair, changeType ChangeType) (interface{}, error) {
+	if frontendRegexp.MatchString(kvPair.Key) {
+		frontend, err := engine.FrontendFromJSON(kvPair.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		if changeType == Upsert {
+			return &engine.FrontendUpserted{
+				Frontend: *frontend,
+			}, nil
+		} else {
+			return &engine.FrontendDeleted{
+				FrontendKey: engine.FrontendKey{Id: frontend.Id},
 			}, nil
 		}
 	}

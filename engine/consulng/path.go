@@ -39,3 +39,15 @@ func (n *ng) backendKeyPath(b engine.BackendKey) string {
 func (n *ng) backendsPath() string {
 	return n.path("backends")
 }
+
+func (n *ng) frontendPath(f engine.Frontend) string {
+	return n.path("frontends", f.Id, "frontend")
+}
+
+func (n *ng) frontendKeyPath(f engine.FrontendKey) string {
+	return n.path("frontends", f.Id, "frontend")
+}
+
+func (n *ng) frontendsPath() string {
+	return n.path("frontends")
+}

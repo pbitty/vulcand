@@ -3,6 +3,7 @@ package consulng
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/mailgun/vulcand/Godeps/_workspace/src/github.com/hashicorp/consul/api"
 	"github.com/mailgun/vulcand/engine"
 	"github.com/mailgun/vulcand/engine/seal"
@@ -39,6 +40,10 @@ func New(hostAddress string, prefix string, box *secret.Box, registry *plugin.Re
 		localState: map[string]*api.KVPair{},
 		registry:   registry,
 	}, nil
+}
+
+func (n *ng) GetRegistry() *plugin.Registry {
+	return n.registry
 }
 
 func (n *ng) UpsertHost(h engine.Host) error {
@@ -154,29 +159,45 @@ func (n *ng) DeleteBackend(b engine.BackendKey) error {
 	return err
 }
 
-func (n *ng) GetRegistry() *plugin.Registry {
-	return n.registry
+func (n *ng) UpsertFrontend(f engine.Frontend, ttl time.Duration) error {
+	if f.Id == "" {
+		return &engine.InvalidFormatError{Message: "frontend id can not be empty"}
+	}
+	return n.putJSONWithTTL(n.frontendPath(f), f, ttl)
+}
+
+func (n *ng) GetFrontends() ([]engine.Frontend, error) {
+	frontends := []engine.Frontend{}
+	kvPairs, _, err := n.client.KV().List(n.frontendsPath(), nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, kvPair := range kvPairs {
+		frontend, err := engine.FrontendFromJSON(kvPair.Value)
+		if err != nil {
+			return nil, err
+		}
+		frontends = append(frontends, *frontend)
+	}
+	return frontends, nil
+}
+
+func (n *ng) GetFrontend(f engine.FrontendKey) (*engine.Frontend, error) {
+	kvPair, _, err := n.client.KV().Get(n.frontendKeyPath(f), nil)
+	if err != nil {
+		return nil, err
+	}
+	return engine.FrontendFromJSON(kvPair.Value)
+}
+
+func (n *ng) DeleteFrontend(f engine.FrontendKey) error {
+	_, err := n.client.KV().Delete(n.frontendKeyPath(f), nil)
+	return err
 }
 
 //
 // Not yet implemented ...
 //
-
-func (n *ng) GetFrontends() ([]engine.Frontend, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) GetFrontend(engine.FrontendKey) (*engine.Frontend, error) {
-	return nil, errors.New("Not yet implemented")
-}
-
-func (n *ng) UpsertFrontend(engine.Frontend, time.Duration) error {
-	return errors.New("Not yet implemented")
-}
-
-func (n *ng) DeleteFrontend(engine.FrontendKey) error {
-	return errors.New("Not yet implemented")
-}
 
 func (n *ng) GetMiddlewares(engine.FrontendKey) ([]engine.Middleware, error) {
 	return nil, errors.New("Not yet implemented")
@@ -299,6 +320,66 @@ func (n *ng) putJSON(key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (n *ng) putJSONWithTTL(key string, value interface{}, ttl time.Duration) error {
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	if ttl > 0 {
+		if ttl < 10*time.Second {
+			ttl = 10 * time.Second
+		}
+
+		kvPair, _, err := n.client.KV().Get(key, nil)
+		if err != nil {
+			return err
+		}
+		// see if entry exists and has session
+		if kvPair != nil && kvPair.Session != "" {
+			// if so, release from session and delete session
+			success, _, err := n.client.KV().Release(kvPair, nil)
+			if err != nil {
+				return err
+			}
+			if !success {
+				return fmt.Errorf("Could not release session for key: %s [session: %s]", key, kvPair.Session)
+			}
+			n.client.Session().Destroy(kvPair.Session, nil)
+		}
+
+		// create new session with TTL
+		ttlStr := fmt.Sprint(ttl.Seconds(), "s")
+		fmt.Println("TTL: ", ttlStr)
+		session, _, err := n.client.Session().CreateNoChecks(&api.SessionEntry{
+			TTL:      ttlStr,
+			Behavior: "delete",
+			Checks:   []string{},
+		}, nil)
+		if err != nil {
+			return err
+		}
+
+		success, _, err := n.client.KV().Acquire(&api.KVPair{
+			Key:     key,
+			Value:   bytes,
+			Session: session,
+		}, nil)
+
+		if err != nil {
+			return err
+		}
+
+		if !success {
+			return fmt.Errorf("Could not acquire session lock for key: %s [session: %s]", key, session)
+		}
+	} else {
+		return n.putJSON(key, value)
+	}
+
 	return nil
 }
 
